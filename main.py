@@ -20,10 +20,19 @@ async def startup_event():
     """Initialize components on startup"""
     try:
         await audio_processor.initialize()
+        await robot_ws.initialize_pipeline()
         logger.info("Robot Dog AI server started successfully")
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
         raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup components on shutdown"""
+    try:
+        await robot_ws.close_pipeline()
+    except Exception as e:
+        logger.warning(f"Failed during shutdown cleanup: {e}")
 
 @app.get("/health")
 async def health_check():

@@ -1,5 +1,10 @@
 import asyncio
+import os
 from typing import Optional
+
+import numpy as np
+from faster_whisper import WhisperModel
+
 from app.utils.logger import logger
 
 class WhisperEngine:
@@ -7,14 +12,21 @@ class WhisperEngine:
     
     def __init__(self):
         self.model_loaded = False
-        self.model_name = "whisper-base"
+        self.model_name = os.environ.get("WHISPER_MODEL", "small")
+        self.device = os.environ.get("WHISPER_DEVICE", "cpu")
+        self.compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
+        self.language = os.environ.get("WHISPER_LANGUAGE")
+        self.model: Optional[WhisperModel] = None
     
     async def initialize(self):
         """Initialize Whisper model"""
         try:
             logger.info("Initializing Whisper engine...")
-            # TODO: Load actual Whisper model
-            # self.model = whisper.load_model(self.model_name)
+
+            def _load_model():
+                return WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+
+            self.model = await asyncio.to_thread(_load_model)
             self.model_loaded = True
             logger.info("Whisper engine initialized successfully")
         except Exception as e:
@@ -23,17 +35,32 @@ class WhisperEngine:
     
     async def transcribe(self, audio_data: bytes) -> str:
         """Transcribe audio data to text"""
-        if not self.model_loaded:
+        if not self.model_loaded or not self.model:
             raise RuntimeError("Whisper engine not initialized")
         
         try:
             logger.debug(f"Transcribing {len(audio_data)} bytes of audio")
-            # TODO: Implement actual transcription
-            # result = self.model.transcribe(audio_data)
-            # return result["text"]
-            
-            # Placeholder response
-            return "Transcription placeholder"
+
+            # Assumption: raw PCM int16 mono @ 16kHz
+            pcm = np.frombuffer(audio_data, dtype=np.int16)
+            if pcm.size == 0:
+                return ""
+            audio = (pcm.astype(np.float32) / 32768.0).copy()
+
+            def _do_transcribe():
+                segments, _info = self.model.transcribe(
+                    audio,
+                    language=self.language,
+                    vad_filter=True,
+                )
+                parts = []
+                for seg in segments:
+                    if seg.text:
+                        parts.append(seg.text)
+                return "".join(parts).strip()
+
+            text = await asyncio.to_thread(_do_transcribe)
+            return text
             
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
