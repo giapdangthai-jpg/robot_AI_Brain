@@ -299,8 +299,10 @@ class RobotWebSocket:
             logger.info(f"TTS Generated audio: {len(audio_data)} bytes")
             
             # Step 3: Send response back to ESP32
+            # Include user_text so ESP32 can parse commands from original speech
             response_data = {
                 "type": "response",
+                "user_text": text,
                 "text": llm_response,
                 "timestamp": asyncio.get_event_loop().time()
             }
